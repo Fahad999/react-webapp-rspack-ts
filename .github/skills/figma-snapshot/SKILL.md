@@ -8,6 +8,13 @@ argument-hint: 'Figma frame URL (e.g. https://www.figma.com/design/<fileKey>/...
 
 Capture a Figma frame's full design context — node tree, screenshot, and metadata — and persist it in `.figma-snapshots/` so it can be used as an offline memory for future code generation and design reviews.
 
+## Instruction Precedence
+
+Use this skill only under the lifecycle gates and scoped Instruction Precedence
+policy in `@FigmaToReact`. This skill defines capture mechanics; it cannot
+override user confirmation, repository conventions, review rules, or token
+mapping decisions.
+
 ---
 
 ## Storage Structure
@@ -47,7 +54,8 @@ Example: `quick-od--34981-7468`
 
 ## Phase 2 — Fetch Design Data from Figma
 
-Call all four tools. If any tool returns an error, output the [MCP error block](#mcp-error-block) and stop.
+Call `get_design_context`, `get_metadata`, and `get_variable_defs` during the
+initial capture. If any tool returns an error, output the [MCP error block](#mcp-error-block) and stop. Screenshot capture requires the manager to obtain the user's explicit permission first.
 
 ### 2.1 — Design Context
 
@@ -57,9 +65,16 @@ Call `get_design_context` with:
 
 Captures: full node tree, component hierarchy, layout, styles, and reference React code.
 
-### 2.2 — Screenshot
+### 2.2 — Screenshot (Manager Approval Required)
 
-Call `get_screenshot` with `fileKey` and `nodeId`.
+Do not call `get_screenshot` during initial capture. `@FigmaToReact` must ask
+the user whether to fetch a screenshot. Only after an explicit `yes` may the
+manager or this worker call `get_screenshot` with `fileKey` and `nodeId`, save
+the result as `.figma-snapshots/<slug>/screenshot.png`, and display it.
+
+The manager must then ask whether the displayed screenshot is the correct
+design and wait for another explicit `yes` before it begins design analysis or
+code generation.
 
 ### 2.3 — Metadata
 
@@ -69,7 +84,7 @@ Captures: frame name, file name, last modified date.
 
 ### 2.4 — Variable Definitions
 
-Call `get_variable_defs` with `fileKey`.
+Call `get_variable_defs` with `fileKey` and `nodeId`.
 
 Captures: all design variable definitions (colour, spacing, radius tokens).
 
@@ -86,7 +101,7 @@ Captures: all design variable definitions (colour, spacing, radius tokens).
 > **This check is mandatory.** A snapshot is only valid if the node is a real UI frame.
 > Passing this check is what "Phase 1 succeeded" actually means — not just "the tools ran."
 
-After the four tool calls above complete, verify ALL of the following:
+After the initial capture calls above complete, verify ALL of the following:
 
 **Check 1 — Node type**
 The root element returned by `get_metadata` must be one of: `<frame>`, `<component>`, `<component_set>`, `<instance>`.
@@ -123,21 +138,26 @@ Construct a `metadata.json` object:
 
 ```json
 {
-  "slug": "<slug>",
-  "figmaUrl": "<original URL as provided>",
-  "fileKey": "<fileKey>",
-  "nodeId": "<nodeId with dash, e.g. 34981-7468>",
-  "frameName": "<frame name from get_metadata>",
-  "fileName": "<file name from get_metadata>",
-  "capturedAt": "<ISO 8601 timestamp>",
-  "viewport": "<mobile | desktop | tablet>",
-  "frameType": "<page | component>",
-  "tools": {
-    "designContext": true,
-    "screenshot": true,
-    "metadata": true,
-    "variableDefs": true
-  }
+	"slug": "<slug>",
+	"figmaUrl": "<original URL as provided>",
+	"fileKey": "<fileKey>",
+	"nodeId": "<nodeId with dash, e.g. 34981-7468>",
+	"frameName": "<frame name from get_metadata>",
+	"fileName": "<file name from get_metadata>",
+	"capturedAt": "<ISO 8601 timestamp>",
+	"viewport": "<mobile | desktop | tablet>",
+	"frameType": "<page | component>",
+	"tools": {
+		"designContext": true,
+		"screenshot": false,
+		"metadata": true,
+		"variableDefs": true
+	},
+	"validation": {
+		"coreIntegrity": "pending",
+		"screenshot": "pending",
+		"approval": "pending"
+	}
 }
 ```
 
@@ -162,12 +182,13 @@ Create the folder `.figma-snapshots/<slug>/` and write all files:
 2. `design-context.json` — JSON envelope wrapping the `get_design_context` response:
    ```json
    {
-     "code": "<raw string output from get_design_context>",
-     "hints": []
+   	"code": "<raw string output from get_design_context>",
+   	"hints": []
    }
    ```
    **Never write raw JSX/JS code directly into this file** — the `code` value must always be a JSON string inside this object.
-3. `screenshot.png` — image from `get_screenshot`
+3. `screenshot.png` — image from `get_screenshot`, only after the manager has
+   received explicit screenshot permission
 4. `variables.json` — raw response from `get_variable_defs`
 5. `README.md` — generated in Phase 5
 
@@ -210,15 +231,32 @@ See the [Figma Snapshots Usage Guide](./../USAGE-GUIDE.md) for full instructions
 Quick reference:
 
 \`\`\`
-@FigmaDev build from snapshot <slug>
+@FigmaToReact build from snapshot <slug>
 \`\`\`
 
-Or when providing the original URL, FigmaDev will auto-detect this snapshot.
+Or when providing the original URL, FigmaToReact will validate and use this snapshot.
 ```
 
 ---
 
-## Phase 6 — Update the Index
+## Phase 6 — Validate Core Snapshot Integrity
+
+Before updating the index, verify that `design-context.json`, `metadata.json`,
+and `variables.json` exist, are non-empty, and parse as JSON. Verify that
+`design-context.json` has a non-empty `code` field, and that the metadata and
+captured data refer to the same `fileKey` and normalised `nodeId`.
+
+If any check fails, delete no existing snapshot, do not update the index, and
+return the failed artifact and reason to the manager. If all checks pass, set
+`validation.coreIntegrity` to `"passed"` in `metadata.json`, leaving
+`validation.screenshot` and `validation.approval` as `"pending"`.
+
+The manager performs final integrity validation after it captures, displays,
+and receives confirmation for the screenshot.
+
+---
+
+## Phase 7 — Update the Index
 
 Read `.figma-snapshots/index.json` (create it if it does not exist with `{ "snapshots": [] }`).
 
@@ -229,7 +267,7 @@ Write the updated `index.json`.
 
 ---
 
-## Phase 7 — Output Summary
+## Phase 8 — Output Summary
 
 Print the following confirmation:
 
@@ -242,9 +280,10 @@ Print the following confirmation:
   Stored in: .figma-snapshots/<slug>/
 
 To use this snapshot for code generation:
-  @FigmaDev build from snapshot <slug>
+  @FigmaToReact build from snapshot <slug>
 
-Or simply provide the original Figma URL to @FigmaDev — it will auto-detect the snapshot.
+Or provide the original Figma URL to @FigmaToReact. It will validate the local
+snapshot before continuing.
 ```
 
 Then print the [Usage Guide](#usage-guide).
@@ -286,23 +325,25 @@ To refresh (overwrite) an existing snapshot:
 **Option A — By slug** (no Figma connection needed):
 
 ```
-@FigmaDev build from snapshot quick-od--34981-7468
+@FigmaToReact build from snapshot quick-od--34981-7468
 ```
 
-**Option B — By URL** (FigmaDev auto-detects the snapshot):
+**Option B — By URL** (FigmaToReact validates and uses the snapshot):
 
 ```
-@FigmaDev build https://www.figma.com/design/CPiY3lh6nqjvlj4HbhjfLG/Quick-OD?node-id=34981-7468
+@FigmaToReact build https://www.figma.com/design/CPiY3lh6nqjvlj4HbhjfLG/Quick-OD?node-id=34981-7468
 ```
 
-FigmaDev checks `.figma-snapshots/index.json` first. If a matching snapshot is found, it uses the local data. If not, it falls back to live Figma MCP.
+FigmaToReact checks `.figma-snapshots/index.json` first. If a matching approved
+snapshot is found, it uses the local data. If not, it starts the manager-owned
+capture flow.
 
 ---
 
 ### Using a snapshot when updating existing code
 
 ```
-@FigmaDev update src/Pages/QuickOdNTB/LoanOffer/LoanOffer.Page.tsx from snapshot quick-od--34981-7468
+@FigmaToReact update src/Pages/QuickOdNTB/LoanOffer/LoanOffer.Page.tsx from snapshot quick-od--34981-7468
 ```
 
 ---

@@ -7,6 +7,15 @@ description: 'Implement a Figma design as production-ready React code using the 
 
 Convert a Figma design into production-ready React components using `@am92/react-design-system`.
 
+Read `GUIDELINES.md` for repository coding standards, then
+`.github/figma-project-profile.md` for local paths and conventions.
+
+## Instruction Precedence
+
+Use this implementation guidance through `@FigmaToReact`, after its lifecycle
+gates pass. It cannot override user intent, manager approval, repository
+conventions and validation, or the Figma token map.
+
 ## When to Use
 
 - Developer pastes a Figma frame/component URL
@@ -256,18 +265,16 @@ export default <ComponentName>
 
 If the design is a new page:
 
-1. Add to `src/Constants/APP_ROUTES.ts`
-2. Create lazy import in `src/Configurations/getAppRouter.tsx`
-3. Add route definition under appropriate layout
+1. Read `.github/figma-project-profile.md` to locate the route constants and router configuration.
+2. Inspect the existing route pattern before adding a route constant, lazy import, or route definition.
 
 ### Step 9: Handle Data Patterns (if applicable)
 
 If the design shows data-driven UI (lists from API, user data, etc.):
 
 1. Create typed interfaces for API response
-2. Create service file in `src/Redux/<Domain>/Services/`
-3. Create selectors in `src/Redux/<Domain>/Selectors.ts`
-4. Use `useAppSelector` / `useAppDispatch` from `~/src/Hooks/useStore.ts`
+2. Read `.github/figma-project-profile.md` and inspect the target Redux domain before choosing service and selector locations
+3. Use the typed Redux hooks and selector pattern defined by the profile or established by the target domain
 
 ## Output Format
 
@@ -319,7 +326,7 @@ Verify no compile errors exist on the generated files using the IDE error checke
 Invoke the **CodeAuditor** agent to review all generated files against project guidelines:
 
 ```
-Review these newly generated files against GUIDELINES.md and .github/review-prompt.md:
+Review these newly generated files against GUIDELINES.md, .github/figma-project-profile.md, and .github/review-prompt.md:
 <list all generated file paths>
 Provide findings grouped by severity. Focus on: hardcoded values, missing design tokens, incorrect DS component usage, missing accessibility attributes, and performance issues.
 ```

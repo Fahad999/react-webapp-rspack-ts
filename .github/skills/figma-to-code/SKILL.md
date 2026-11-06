@@ -8,10 +8,28 @@ argument-hint: 'Figma frame or page URL (e.g. https://www.figma.com/design/<file
 
 Convert a Figma design into production-ready React + TypeScript code that follows this project's conventions, design system, and guidelines.
 
+## Instruction Precedence
+
+Use this skill only after `@FigmaToReact` has passed its lifecycle gates. This
+skill defines implementation mechanics; the manager controls workflow and
+approval, the project profile and review prompt control repository conventions
+and validation, and the token map controls visual mappings.
+
+## Codegraph Usage Is Opt-In
+
+`codegraph_explore` is never used by default. `@FigmaToReact` decides whether it's enabled for
+a given task in its Phase 2.5 gate, based on an explicit yes/no answer from the user, and passes
+that decision down as `codegraphUsage: enabled | disabled`. Every `codegraph_explore` mention
+below is conditional on that decision — when disabled (or the field is absent), skip it entirely
+and use the fallback tool named alongside each instruction instead. Even when enabled, if no
+`.codegraph/` index exists in the workspace, treat the tool as unavailable and use the fallback.
+
 ## Reference Files (always load before generating any code)
 
+- `GUIDELINES.md` — Repository-wide React, TypeScript, state, styling, API, and asset standards.
+- `.github/figma-project-profile.md` — Repository-specific paths, conventions, and validation commands.
 - `.github/figma-token-map.md` — Token mappings, Design System component map, and enforcement rules.
-- `GUIDELINES.md` — React/TypeScript code standards, naming conventions, and file structure.
+- `.github/review-prompt.md` — React/TypeScript standards, naming conventions, and review rules.
 
 ---
 
@@ -79,7 +97,7 @@ If `get_design_context` returns valid data, analyze the design:
     - `REMIX_ICON` → implement as `DsRemixIcon`
     - `SVG_ASSET` → SVG file in `src/AssetFiles/images/`
     - `DS_COMPONENT` → DS primitives (`DsBox`, `DsStack`, etc.)
-    See §5.9 for the full decision rule and signals.
+      See §5.9 for the full decision rule and signals.
 11. **Colour per-node attribution** — when the parent node's design context lists two or more colour tokens, do NOT assign them to child elements by inference. Call `get_design_context` on each relevant child node individually. Each sub-node response maps exactly one token set to exactly one element — use that, not the parent's combined list.
 
 ---
@@ -151,7 +169,8 @@ Match by priority: component type, then text content, then position/hierarchy. D
      The container that carries the padding matters as much as the value itself.
      A parent wrapper and a child container have different visual effects even with equal values.
      Always read the reference component's source to verify which element holds the padding. -->
-- **Matching an existing component's padding/spacing**: Read that component's source file first. Apply the same *container scope* the reference uses (i.e. which element carries the padding), not just the same value.
+- **Matching an existing component's padding/spacing**: Read that component's source file first. Apply the same _container scope_ the reference uses (i.e. which element carries the padding), not just the same value.
+- **Shared handler/hook/selector about to change**: If `codegraph_explore` is available, check the symbol's callers/blast radius before editing it. If other pages/components depend on it, isolate the change locally instead of modifying the shared symbol.
 
 ---
 
@@ -159,32 +178,23 @@ Match by priority: component type, then text content, then position/hierarchy. D
 
 ### 4A.1 — Determine File Placement and Routing
 
-1.  Propose a file path following this structure:
-    ```
-    src/Pages/<Domain>/<PageName>/
-      <PageName>.Page.tsx       ← main page component
-      <PageName>.Page.scss      ← page-scoped styles (if needed)
-      Components/               ← sub-components used only on this page
-        <SubComponentName>.tsx
-      Hooks/
-        use<PageName>.ts        ← business logic hook
-    ```
-    Ask the user: "Which domain does this page belong to? (e.g. Home, Product, CommonModule)"
-2.  Search `src/Routes/` for the appropriate routes file (e.g. `*_APP_ROUTES.ts`, `*_ROUTES.tsx`). Read the existing pattern and propose:
-    - A new route constant entry in `*_APP_ROUTES.ts`
-    - A new lazy-loaded page entry in `*_ROUTES.tsx`
-3.  Ask: "Should I also add the route entry, or will you handle routing separately?"
+1.  Read `.github/figma-project-profile.md`, then inspect one comparable page in the target domain before proposing a file path. Follow the profile and that local pattern for page, component, hook, and style placement.
+2.  For a new route, inspect the profile-defined route constants and router configuration before proposing a route change. Preserve the local lazy-loading and route-object pattern.
+3.  This step applies even when the new screen will not reuse any existing code verbatim. If `codegraph_explore` is available, call it anchored on an adjacent existing page (e.g. the page that will navigate into this new route) or on a shared selector/reducer/stage-constant both will touch, to see its real call paths and dependents — not just whether a string match exists. Use this to confirm how the new screen must integrate with existing navigation chains and shared Redux state before finalizing placement.
+4.  Ask: "Should I also add the route entry, or will you handle routing separately?"
 
 ### 4A.2 — Identify and Reuse Code
 
-Search the codebase for:
+If the `codegraph_explore` tool is available, call it with the relevant domain/feature terms first — it surfaces matching constants, hooks, and Redux slices (with usage/call paths) in one call. Otherwise, search the codebase for:
 
 - Any `CONSTANTS` file that would apply (e.g. error codes, form keys, strings)
-- Any existing helper in `src/Helpers/` that the new page might reuse
-- Any existing hook in `src/Hooks/` that covers needed behaviour
+- Any existing utility or hook in the profile-defined shared location that covers needed behaviour
 - Any existing domain slice in `src/Redux/` if data-fetching is involved
+- Any existing shared component (e.g. under `src/Components/`) whose visual shape resembles what the Figma design needs
 
 List what you found and confirm with the user before importing anything.
+
+**Then, before writing any import or call against a symbol selected for reuse**, call `codegraph_explore` again anchored on that specific symbol's name or defining file (not the domain query) to confirm its real prop names/types, parameter order, and return shape. If unavailable, read the symbol's definition directly instead. Existence alone — from this discovery step or from a plain text search — does not prove you know the symbol's contract; never assume a prop name or call shape from naming convention or similar components elsewhere.
 
 ### 4A.3 — Generate the Page
 
@@ -203,6 +213,8 @@ Create the page with:
 ## Phase 4B — New Component
 
 ### 4B.1 — Determine File Placement
+
+Before placement, if the `codegraph_explore` tool is available, call it with the component's domain/feature terms (otherwise fall back to searching the codebase) to check whether a near-duplicate component already exists anywhere — not just in the obvious target folder. If a close match is found, present it and ask the user whether to reuse/extend it instead of creating a new one.
 
 Ask: "Is this component reusable across pages, or specific to one page?"
 
@@ -225,6 +237,7 @@ Ask: "Is this component reusable across pages, or specific to one page?"
 - Blank handler bodies for any interactive elements: `const handleXxx = (): void => { /* TODO */ }`
 - DS components only — no raw `<div>`, `<button>`, `<input>` unless wrapping a DS component
 - Tokens only — no hardcoded values
+- If this component wraps or composes an existing shared component, verify that component's exact prop contract with `codegraph_explore` (or by reading its definition) first — do not assume its props from its name or from similar components elsewhere
 
 ---
 
@@ -233,14 +246,16 @@ Ask: "Is this component reusable across pages, or specific to one page?"
 If the design shows data-driven UI (lists from API, user data, etc.):
 
 1. Create typed interfaces for the API response.
-2. Create a service file in `src/Redux/<Domain>/Services/`.
-3. Create selectors in `src/Redux/<Domain>/Selectors.ts`.
+2. Read `.github/figma-project-profile.md` and inspect the target Redux domain before choosing service and selector locations.
+3. Before calling any existing Redux service, selector, or action found in that domain, verify its exact request/response types and return shape with `codegraph_explore` (or by reading its definition) — do not assume the shape from the feature spec's prose or from the symbol's name alone.
 
 <!-- FIX 3: Service outcomes must be agreed with the user before any service call is written.
      Silent .catch(() => {}) blocks made failures invisible — the feature appeared broken
      because errors produced no feedback. The three questions below are mandatory.
      Never write a .then()/.catch() block without answers to all three. -->
+
 **Before implementing any service call**, ask the user:
+
 > - **Succeeds** — what should happen? (e.g. navigate to a route, show a success toast, close a modal)
 > - **Fails** — what should happen? (e.g. show an error toast, display an inline error, stay on screen)
 > - **Times out / network error** — same as failure, or different?
@@ -270,6 +285,7 @@ Always use CSS variables from `.github/figma-token-map.md` for colors, spacing, 
      Token names do not map intuitively to px values.
      E.g. quickFreeze=4px, glacial=8px, frostbite=12px, bitterCold=16px, cool=20px, mild=24px.
      Assuming them from name alone has caused visible spacing bugs in production. -->
+
 > **Token verification (mandatory before writing any `dsSpacing.*` call):** Open `.github/figma-token-map.md` and read the spacing table to confirm the exact token name → px mapping. Do not rely on memory or inference from the token name.
 
 ### 5.3 — Key Rules
@@ -332,6 +348,7 @@ export default <ComponentName>
      rendered a visible divider that wasn't in the design; icons added to buttons that had none
      in Figma. The blockquote below is the single guard against all assumption-based bugs.
      It applies to every visual property without exception. -->
+
 > **Figma is the only source of truth for every visual prop, element, and layout detail.**
 > Before adding any prop, icon, border, divider, shadow, color, or spacing value — confirm it
 > is explicitly visible in the Figma node. Convention, intuition, and pattern-matching from
@@ -342,6 +359,7 @@ export default <ComponentName>
 - Never set `fontSize` manually on a `DsTypography` — use `variant`.
 - Never add a new custom SCSS class for something a DS component prop already handles.
 - **Never approximate an `SVG_ASSET` node with CSS** (stacked `DsBox` layers, `border-radius` circles, rotated elements, grid overlays). CSS composites cannot be visually verified without a live browser render and require multiple fix iterations. Classify the node using §5.9 and use the correct path.
+- **Never treat a reused symbol's existence as proof it's safe to call.** Confirming a component, hook, selector, action, or service exists (via text search or a domain-wide `codegraph_explore` query) says nothing about its prop names, parameter order, or return shape. Verify the exact contract with `codegraph_explore` anchored on that specific symbol/file, or `read/readFile` its definition, before writing any import or call against it.
 
 ### 5.8 — DsButton Audit Checklist
 
@@ -350,14 +368,15 @@ export default <ComponentName>
      and incorrect wrapper behavior (topBorder on BottomSticker that had no divider in Figma).
      Every property in the table below must be confirmed against the Figma node before writing.
      Note: topBorder is just one example of Fix 6 — the Figma-truth rule above covers all cases. -->
+
 Before writing any `DsButton`, verify each property directly from the Figma node. Do **not** infer from context or convention:
 
-| Property | What to verify in Figma | Common mistake to avoid |
-| :--- | :--- | :--- |
-| `variant` | Is the button filled (contained), outlined, or text-only? | Defaulting to `contained` without checking |
-| `size` | What height/size tier does Figma specify? | Using the wrong size tier |
-| `startIcon` / `endIcon` | Is there literally a visible icon element in the Figma node? | Adding an icon because the context "seems to call for one" |
-| Wrapper context | What wraps the button? Check wrapper props separately against Figma | Adding wrapper props (e.g. dividers, borders) not shown in Figma |
+| Property                | What to verify in Figma                                             | Common mistake to avoid                                          |
+| :---------------------- | :------------------------------------------------------------------ | :--------------------------------------------------------------- |
+| `variant`               | Is the button filled (contained), outlined, or text-only?           | Defaulting to `contained` without checking                       |
+| `size`                  | What height/size tier does Figma specify?                           | Using the wrong size tier                                        |
+| `startIcon` / `endIcon` | Is there literally a visible icon element in the Figma node?        | Adding an icon because the context "seems to call for one"       |
+| Wrapper context         | What wraps the button? Check wrapper props separately against Figma | Adding wrapper props (e.g. dividers, borders) not shown in Figma |
 
 ### 5.9 — Icon and Graphic Asset Decision Rule
 
@@ -370,13 +389,13 @@ Before writing any `DsButton`, verify each property directly from the Figma node
 
 #### 5.9.1 — Classification signals
 
-| Signal | Classification | Implementation |
-| :--- | :--- | :--- |
-| Single `<instance>` child + standard icon size (16/20/24/32 px) + one colour token | `REMIX_ICON` | `DsRemixIcon className='ri-...'` |
-| Any `<vector>` child present | `SVG_ASSET` | SVG file in `src/AssetFiles/images/` |
-| Multiple layered children (shape + icon + line, etc.) | `SVG_ASSET` | SVG file in `src/AssetFiles/images/` |
-| Non-standard size + multiple colour tokens | `SVG_ASSET` | SVG file in `src/AssetFiles/images/` |
-| Layout-only node | `DS_COMPONENT` | DS primitives |
+| Signal                                                                             | Classification | Implementation                       |
+| :--------------------------------------------------------------------------------- | :------------- | :----------------------------------- |
+| Single `<instance>` child + standard icon size (16/20/24/32 px) + one colour token | `REMIX_ICON`   | `DsRemixIcon className='ri-...'`     |
+| Any `<vector>` child present                                                       | `SVG_ASSET`    | SVG file in `src/AssetFiles/images/` |
+| Multiple layered children (shape + icon + line, etc.)                              | `SVG_ASSET`    | SVG file in `src/AssetFiles/images/` |
+| Non-standard size + multiple colour tokens                                         | `SVG_ASSET`    | SVG file in `src/AssetFiles/images/` |
+| Layout-only node                                                                   | `DS_COMPONENT` | DS primitives                        |
 
 #### 5.9.2 — For `REMIX_ICON` nodes
 
@@ -394,14 +413,14 @@ Before writing any `DsButton`, verify each property directly from the Figma node
      confirm that. The steps below make user confirmation mandatory and non-optional. -->
 
 1. **Scan existing assets first.** Run `list_dir src/AssetFiles/images/` and check for files whose names suggest the same visual pattern (e.g. `no-data`, `empty`, `calendar`, `no-orders`).
-2. **If a candidate is found, do not judge the match yourself.** Comparing hex values, rotation angles, or path shapes read from the file is a heuristic for finding a *candidate* only — it is never sufficient grounds to decide reuse. Present the candidate and ask:
+2. **If a candidate is found, do not judge the match yourself.** Comparing hex values, rotation angles, or path shapes read from the file is a heuristic for finding a _candidate_ only — it is never sufficient grounds to decide reuse. Present the candidate and ask:
    > "I found **`<filename>`** which may match this design. Can you confirm — is this the same asset? Reply **reuse** to use it, or **download** to fetch the exact asset from Figma instead."
    - Wait for an explicit answer. A declarative statement like "I'll reuse X" does not satisfy this — it must be phrased as a question and answered before any code references the asset.
 3. **If no candidate is found, or the user chooses download:** call `download_assets` on the node and save the returned bytes verbatim — never hand-author, approximate, or reconstruct the SVG from JSX/CSS reference code.
 4. **If `download_assets` is unavailable** (the tool is disabled or not permitted): do **not** fall back to creating or approximating the SVG yourself. Tell the user the tool isn't available and either ask them to enable it, or give them the exact command (e.g. the `curl` command against the Figma export URL) to run themselves and confirm once the file is saved.
 5. **Ask the user for the file name** before writing any new asset:
    > "What would you like to name this asset file? (e.g. `no-orders.svg`)"
-   Never self-assign the name.
+   > Never self-assign the name.
 6. Call `get_design_context` on **each child node individually** to get the correct colour token per element when documenting the asset. Never assign colours from the parent node's combined token list.
 7. Add an entry to `src/Constants/ASSET_MAP.ts` and use `DsImage` with the asset's `srcSet` in the component.
 
@@ -430,24 +449,40 @@ After ALL files are written, run these checks in order:
 2. **Prettier**: Run `npx prettier --write "<path>/**/*.{ts,tsx}"`. Prettier is the source of truth for formatting.
 3. **ESLint**: Run `npx eslint "<path>/**/*.{ts,tsx}"`. Fix errors in-place. Common issues: import sorting, unused variables, missing types. Run `npx eslint --fix` for auto-fixable issues.
 4. **TypeScript Check**: Verify no compile errors using the IDE error checker. Fix any type mismatches, missing imports, or incorrect prop types.
-5. **Self-Check**: Run a self-check against `GUIDELINES.md §1–§6`. Report any rules that could not be satisfied and why.
-6. **CodeAuditor Review**: Invoke the **CodeAuditor** agent to review all generated files:
+5. **Transitive Dependency Check**: For every existing symbol reused from outside the newly created files (shared components, hooks, utilities), call `codegraph_explore` anchored on that symbol's own definition (or read it directly) to inspect what *it* imports — not just that it exists and matches its own contract. Confirm none of its own imports trace back to a folder or file the task explicitly excluded from reuse. A clean existence and contract check on the top-level symbol does not guarantee its transitive dependencies are clean.
+6. **Behavior Check**: Use the repository's existing test tooling, if
+   available, or a recorded manual interaction check for every approved
+   interactive/stateful element and its applicable loading, error, empty,
+   disabled, and success state. For deferred behavior, verify the
+   manager-approved `// TODO: [spec]` markers instead. Do not add a test
+   library solely for this work or claim behavior is verified without a test or
+   recorded manual check.
+7. **Visual Check**: When browser screenshot tooling is available, run the app
+   at every approved Figma viewport, capture the implemented UI, and compare it
+   to `screenshot.png`. Fix meaningful differences. If the tooling is
+   unavailable, report visual validation as blocked and request manual
+   confirmation; code inspection is not visual validation.
+8. **Self-Check**: Run a self-check against `GUIDELINES.md`, `.github/figma-project-profile.md`, and `.github/review-prompt.md`. Report any rules that could not be satisfied and why.
+9. **CodeAuditor Review**: Invoke the **CodeAuditor** agent to review all generated files:
    ```
-   Review these newly generated files against GUIDELINES.md and .github/review-prompt.md:
+   Review these newly generated files against GUIDELINES.md, .github/figma-project-profile.md, and .github/review-prompt.md:
    <list all generated file paths>
    Provide findings grouped by severity. Focus on: hardcoded values, missing design tokens, incorrect DS component usage, missing accessibility attributes, and performance issues.
    ```
    Fix all 🔴 Error findings immediately. Fix 🟡 Warnings if the fix is straightforward. Note 🔵 Info items but do not fix unless trivial.
-7. **Final Summary**: After all checks pass, present:
+10. **Final Summary**: After all checks pass, present:
 
-| Check       | Status                 |
-| :---------- | :--------------------- |
-| Corruption  | ✅ Clean               |
-| Prettier    | ✅ Formatted           |
-| ESLint      | ✅ No errors           |
-| TypeScript  | ✅ No errors           |
-| Self-Check  | ✅ All §1–§6 satisfied |
-| CodeAuditor | ✅ All errors fixed    |
+| Check            | Status                                          |
+| :--------------- | :---------------------------------------------- |
+| Corruption       | ✅ Clean                                        |
+| Prettier         | ✅ Formatted                                    |
+| ESLint           | ✅ No errors                                    |
+| TypeScript       | ✅ No errors                                    |
+| Transitive Deps  | ✅ Clean, or 🔴 Found excluded-folder dependency (list it) |
+| Behavior         | ✅ Verified, ⏳ Deferred, or ⛔ Blocked         |
+| Visual           | ✅ Matched, 🟡 Differences noted, or ⛔ Blocked |
+| Self-Check       | ✅ All §1–§6 satisfied                          |
+| CodeAuditor      | ✅ All errors fixed                             |
 
 ---
 

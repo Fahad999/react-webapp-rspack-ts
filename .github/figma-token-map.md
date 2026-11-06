@@ -11,6 +11,11 @@
 > not approximated. Computed 2026-08-10. See `.github/design-system-color-tokens.md` and
 > `.github/design-system-spacing-radius-typography-tokens.md` for the standalone source-cited versions.
 
+> **Instruction precedence:** Follow the scoped policy in `@FigmaToReact`. This
+> map is authoritative for visual token and component mapping, but it cannot
+> override user intent, manager lifecycle gates, repository conventions, or
+> review requirements.
+
 ---
 
 ## Color Tokens
@@ -66,7 +71,7 @@
 ### Icon Colors
 
 | Figma Token Name       | CSS Variable                            | Light   | Dark    | High Contrast |
-| ---------------------- | ---------------------------------------- | ------- | ------- | ------------- |
+| ---------------------- | --------------------------------------- | ------- | ------- | ------------- |
 | `iconNegative`         | `var(--ds-colour-iconNegative)`         | #EB0000 | #FF6C6C | #A0E2F7       |
 | `iconPositive`         | `var(--ds-colour-iconPositive)`         | #278829 | #62D264 | #A0E2F7       |
 | `iconWarning`          | `var(--ds-colour-iconWarning)`          | #D84008 | #F87647 | #A0E2F7       |
@@ -107,7 +112,7 @@
 ### State Colors
 
 | Figma Token Name                | CSS Variable                                     | Light                  | Dark                   | High Contrast          |
-| -------------------------------- | ----------------------------------------------------- | ------------------------- | ------------------------- | ------------------------- |
+| ------------------------------- | ------------------------------------------------ | ---------------------- | ---------------------- | ---------------------- |
 | `stateSelectedPrimaryHover`     | `var(--ds-colour-stateSelectedPrimaryHover)`     | rgba(241,70,135,0.08)  | rgba(249,176,204,0.2)  | rgba(145,243,200,0.2)  |
 | `stateSelectedPrimaryPressed`   | `var(--ds-colour-stateSelectedPrimaryPressed)`   | #F9B0CC                | #F9B0CC                | #CFFFEA                |
 | `stateSelectedSecondaryHover`   | `var(--ds-colour-stateSelectedSecondaryHover)`   | #F3FBFB                | #081919                | #081919                |
@@ -162,14 +167,14 @@
 
 #### Trend Colors
 
-| Trend Token             | Light   | Dark / High Contrast |
-| ------------------------ | ------- | --------------------- |
-| Positive                | #278829 | #62D264               |
-| Warning                 | #D84008 | #F87647               |
-| Error                   | #EB0000 | #FF6C6C               |
-| Positive Neutral (bg)   | #EFF9EB | #0C1907               |
-| Warning Neutral (bg)    | #F9F1EB | #322A0F               |
-| Error Neutral (bg)      | #F9EBEF | #320F19               |
+| Trend Token           | Light   | Dark / High Contrast |
+| --------------------- | ------- | -------------------- |
+| Positive              | #278829 | #62D264              |
+| Warning               | #D84008 | #F87647              |
+| Error                 | #EB0000 | #FF6C6C              |
+| Positive Neutral (bg) | #EFF9EB | #0C1907              |
+| Warning Neutral (bg)  | #F9F1EB | #322A0F              |
+| Error Neutral (bg)    | #F9EBEF | #320F19              |
 
 ---
 
@@ -223,13 +228,13 @@
 
 > Source: `dist/Theme/breakpoints.js`.
 
-| Key | Value (px) |
-| ---- | ----------- |
-| `xs` | 0         |
-| `sm` | 414       |
-| `md` | 744       |
-| `lg` | 1280      |
-| `xl` | 1440      |
+| Key  | Value (px) |
+| ---- | ---------- |
+| `xs` | 0          |
+| `sm` | 414        |
+| `md` | 744        |
+| `lg` | 1280       |
+| `xl` | 1440       |
 
 Used for: responsive `sx` object keys (e.g. `{ xs: 'var(--ds-spacing-glacial)', md: 'var(--ds-spacing-cool)' }`),
 `getDeviceActiveScreen(breakpoints)`, and the `withBreakpoints` HOC's mobile/desktop split
@@ -339,4 +344,4 @@ Used for: responsive `sx` object keys (e.g. `{ xs: 'var(--ds-spacing-glacial)', 
 2. **Never** output a hardcoded `px` spacing value — always use the spacing variable.
 3. **Never** output a hardcoded `px` border-radius — always use the radius variable.
 4. **Always** use a `Ds*` component from `@am92/react-design-system` before considering a custom HTML element.
-5. Follow all patterns in `GUIDELINES.md` — `Readonly<Props>`, arrow function components, explicit return types, `useCallback` for handlers.
+5. Follow `GUIDELINES.md` and the project conventions in `.github/figma-project-profile.md` — `Readonly<Props>`, arrow function components, explicit return types, `useCallback` for handlers.
